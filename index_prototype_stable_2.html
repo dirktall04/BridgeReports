@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  
+  <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no">
+  <title>Bridges to Bridge Webi - ArcGIS Map</title>
+
+  <link rel="stylesheet" href="https://js.arcgis.com/3.16/dijit/themes/claro/claro.css">
+  <link rel="stylesheet" href="https://js.arcgis.com/3.16/esri/css/esri.css" />
+
+  <script src="https://js.arcgis.com/3.16/"></script>
+  <script>
+    var map;
+
+    require([
+      "esri/InfoTemplate",
+      "esri/map",
+      "esri/layers/FeatureLayer",
+      "esri/symbols/SimpleFillSymbol",
+      "esri/symbols/SimpleLineSymbol",
+      "esri/symbols/SimpleMarkerSymbol",
+      "esri/symbols/PictureMarkerSymbol",
+      "esri/renderers/SimpleRenderer",
+      "esri/tasks/query",
+      "esri/toolbars/draw",
+      "dojo/dom",
+      "dojo/on",
+      "dojo/parser",
+      "dojo/_base/array",
+      "esri/Color",
+      "dijit/form/Button",
+      "dojo/domReady!"
+    ],
+      function (
+        InfoTemplate, Map, FeatureLayer, SimpleFillSymbol, SimpleLineSymbol,
+        SimpleMarkerSymbol, PictureMarkerSymbol, SimpleRenderer,
+        Query, Draw, dom, on, parser, arrayUtil, Color
+      ) {
+
+        parser.parse();
+
+        var selectionToolbar, featureLayer;
+        var selectionMode;
+
+        var bridgeSelectionToolbar, bridgeFeatureLayer;
+        var bridgeWebiLink1stPart = 'http://reports/biportal/reportlauncher.aspx?reportID=9999999&Bridge ID Prompt=';
+        // ObjectIDs go here, encapsulated in straight brackets and
+        // comma separated.
+        var bridgeWebiLink2ndPart;
+        var bridgeWebiLink3rdPart = '&Format=PDF';
+
+        // Try using a POST request with a hidden form
+        // to submit data to a Webi instead of using
+        // a GET request, since there is a limit to
+        // the amount of data that can be passed
+        // in a URL string.
+
+        map = new Map("map", {
+          basemap: "streets",
+          center: [-97.395, 37.537],
+          zoom: 11
+        });
+
+        map.on("load", initBridgeSelectToolbar);
+
+        ///////////////////////////////////////////////////////////////////
+        /*
+        var bridgeMarkerSymbol = new SimpleMarkerSymbol(SimpleMarkerSymbol.STYLE_SQUARE, 10,
+          new SimpleLineSymbol(SimpleLineSymbol.STYLE_SOLID,
+          new Color([255,0,0]), 1),
+          new Color([0,255,0,0.25]));
+        */
+
+        //*** Start adding in other layers.
+        //*** Give the option to choose only x-many layers to select
+        //*** from at a given time.
+        //*** Also, give the option to make a new selection
+        //*** or to add to a selection.
+        
+        var bridgeMarkerSymbol = new PictureMarkerSymbol('./images/cyan_bridge_symbol_2.png',
+          25, 19);
+        // Can apply a renderer after the layer is added to the map...
+        // Use the bridgeMarkerSymbol for now, apply renderer later.
+        var bridgeMarkerRenderer = new SimpleRenderer(bridgeMarkerSymbol);
+        bridgeMarkerRenderer.setRotationInfo({
+          field:"ROTATION",
+          type:"geographic"
+        });
+        //
+        
+        var bridgeContent = "Non-State Bridge <br>" +
+                            "<b>Bridge ID</b>: ${BRIDGE_ID}";
+        var bridgeInfoTemplate = new InfoTemplate("${FIELD_NAME}", bridgeContent);
+        ///////////////////////////////////////////////////////////////////
+        ///////////////////////////////////////////////////////////////////
+        bridgeFeatureLayer = new FeatureLayer("http://wfs.ksdot.org/arcgis_web_adaptor/rest/services/Structures/Non_State_Bridges/MapServer/0",
+          {
+            mode: FeatureLayer.MODE_ONDEMAND,
+            infoTemplate: bridgeInfoTemplate,
+            outFields: ["*"]
+          });
+
+
+        //Apply a new renderer.
+        bridgeFeatureLayer.setSelectionSymbol(bridgeMarkerSymbol);
+        bridgeFeatureLayer.on("selection-complete", showBridgeIDs);
+        bridgeFeatureLayer.on("selection-clear", function () {
+          dom.byId('bridgeIdOutput').innerHTML = "<i>No Selected Bridges</i>";
+        });
+        map.addLayer(bridgeFeatureLayer);
+        ///////////////////////////////////////////////////////////////////
+        ///////////////////////////////////////////////////////////////////
+        on(dom.byId("startNewSelected"), "click", function () {
+          selectionMode = FeatureLayer.SELECTION_NEW;
+          bridgeSelectionToolbar.activate(Draw.EXTENT);
+        });
+
+        on(dom.byId("addToSelected"), "click", function () {
+          selectionMode = FeatureLayer.SELECTION_ADD;
+          bridgeSelectionToolbar.activate(Draw.EXTENT);
+        });
+
+        on(dom.byId("subtractFromSelected"), "click", function () {
+          selectionMode = FeatureLayer.SELECTION_SUBTRACT;
+          bridgeSelectionToolbar.activate(Draw.EXTENT);
+        });
+
+        on(dom.byId("clearSelected"), "click", function () {
+          bridgeFeatureLayer.clearSelection();
+        });
+        ///////////////////////////////////////////////////////////////////
+        ///////////////////////////////////////////////////////////////////
+        function initBridgeSelectToolbar (event) {
+          bridgeSelectionToolbar = new Draw(event.map);
+          var bridgeSelectQuery = new Query();
+
+          //console.log(event)
+
+          on(bridgeSelectionToolbar, "DrawEnd", function (geometry) {
+            bridgeSelectionToolbar.deactivate();
+            bridgeSelectQuery.geometry = geometry;
+            bridgeFeatureLayer.selectFeatures(bridgeSelectQuery,
+              selectionMode);
+          });
+        }
+        ///////////////////////////////////////////////////////////////////
+        ///////////////////////////////////////////////////////////////////
+        function showBridgeIDs (event) {
+          bridgeWebiLink2ndPart = '';
+          var bridgeIDList = '';
+
+          console.log(bridgeFeatureLayer.getSelectedFeatures());
+
+          nonStateBridgeArray = bridgeFeatureLayer.getSelectedFeatures()
+
+          if (nonStateBridgeArray.length >= 1) {
+            var bridgeCount = 0;
+            arrayUtil.forEach(nonStateBridgeArray, function (feature) {
+              if (bridgeCount >= 1) {
+                bridgeWebiLink2ndPart += ',[' +
+                 feature.attributes.BRIDGE_ID.toString() + ']';
+                 bridgeIDList += ', ' + feature.attributes.BRIDGE_ID.toString();
+              } else {
+                bridgeWebiLink2ndPart += '[' + 
+                feature.attributes.BRIDGE_ID.toString() + ']';
+                bridgeIDList += feature.attributes.BRIDGE_ID.toString();
+              }
+              bridgeCount += 1;
+            });
+            dom.byId('bridgeIdOutput').innerHTML = '<a href="' +
+              bridgeWebiLink1stPart + bridgeWebiLink2ndPart +
+              bridgeWebiLink3rdPart + '">Bridge Report Link</a>' +
+              '<br>' + '<b>Selected Bridge IDs: ' +
+              bridgeIDList + ' </b>';
+          } else {
+            dom.byId('bridgeIdOutput').innerHTML = "<i>No Selected Bridges</i>";
+          }
+
+
+          
+          //featureLayer.getSelectedfeatures
+          /*
+          //summarize the bridge ids to display
+          var bridgeCount = 0;
+          arrayUtil.forEach(event.features, function (feature) {
+            if (bridgeCount >= 1) {
+              bridgeWebiLink2ndPart += ',[' +
+               feature.attributes.BRIDGE_ID.toString() + ']';
+               bridgeIDList += ', ' + feature.attributes.BRIDGE_ID.toString();
+            }
+            else {
+              bridgeWebiLink2ndPart += '[' + 
+              feature.attributes.BRIDGE_ID.toString() + ']';
+              bridgeIDList += feature.attributes.BRIDGE_ID.toString();
+            }
+            bridgeCount += 1;
+          });
+          dom.byId('bridgeIdOutput').innerHTML = '<a href="' +
+            bridgeWebiLink1stPart + bridgeWebiLink2ndPart +
+            bridgeWebiLink3rdPart + '">Bridge Report Link</a>' +
+            '<br>' + '<b>Selected Bridge IDs: ' +
+            bridgeIDList + ' </b>';
+        */
+        }
+
+        ///////////////////////////////////////////////////////////////////
+      });
+  </script>
+</head>
+
+<body class="claro">
+  <button id="startNewSelected" data-dojo-type="dijit/form/Button">Select New Features</button>
+  <button id="addToSelected" data-dojo-type="dijit/form/Button">Add to Selected Features</button>
+  <button id="subtractFromSelected" data-dojo-type="dijit/form/Button">Subtract From Selected Features</button>
+  <button id="clearSelected" data-dojo-type="dijit/form/Button">Clear Selection</button>
+  <br>
+  <div id="map" style="position: relative; width:700px; height:500px; border:1px solid #000;"></div>
+  <span id="bridgeIdOutput"></span>
+</body>
+
+</html>
